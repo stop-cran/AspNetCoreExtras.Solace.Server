@@ -265,7 +265,7 @@ namespace AspNetCoreExtras.Solace.Server
             {
                 await messageProcessingTask!;
             }
-            catch (TaskCanceledException)
+            catch (OperationCanceledException)
             { }
 
             Session!.Disconnect();

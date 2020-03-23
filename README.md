@@ -1,4 +1,4 @@
-# Overview [![NuGet](https://img.shields.io/nuget/v/AspNetCoreExtras.Solace.Server.svg)](https://www.nuget.org/packages/AspNetCoreExtras.Solace.Server) [![Build Status](https://travis-ci.com/stop-cran/AspNetCoreExtras.Solace.Server.svg?branch=master)](https://travis-ci.com/stop-cran/AspNetCoreExtras.Solace.Server)
+# Overview [![NuGet](https://img.shields.io/nuget/v/AspNetCoreExtras.Solace.Server.svg)](https://www.nuget.org/packages/AspNetCoreExtras.Solace.Server) [![Actions Status](https://github.com/stop-cran/AspNetCoreExtras.Solace.Server/workflows/.NET%20Core/badge.svg)](https://github.com/stop-cran/AspNetCoreExtras.Solace.Server/actions)
 
 An extension for ASP.Net Core that allows to process messages from [Solace Pub-Sub](https://solace.com).
 
