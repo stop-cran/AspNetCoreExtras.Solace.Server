@@ -163,21 +163,9 @@ namespace AspNetCoreExtras.Solace.Server
             await Task.Yield();
 
             foreach (var message in messages.GetConsumingEnumerable(cancellationToken))
-            {
-                TContext context;
-                
-                try
-                { 
-                    context = application.CreateContext(Features)!;
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Unexpected error cerating an application context.");
-                    continue;
-                }
-
                 try
                 {
+                    var context = application.CreateContext(Features)!;
                     var httpContext = contextConverter!(context);
                     using var responseStream = new MemoryStream();
 
@@ -202,15 +190,11 @@ namespace AspNetCoreExtras.Solace.Server
                             code = sendReplyReturnCode
                         }))
                             logger.LogError("Error sending response.");
-
-                    application.DisposeContext(context, null);
                 }
                 catch (Exception ex)
                 {
                     logger.LogError(ex, "Unexpected error processing message.");
-                    application.DisposeContext(context, ex);
                 }
-            }
         }
 
         private static Func<object, HttpContext> GetHttpContextConverter<TContext>()
