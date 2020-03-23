@@ -161,6 +161,8 @@ namespace AspNetCoreExtras.Solace.Server.Tests
 
             await server.StartAsync(application.Object, default);
 
+            onMessage.ShouldNotBeNull();
+
             var message = new Mock<IMessage>();
 
             message.Setup(m => m.Destination)
@@ -171,14 +173,17 @@ namespace AspNetCoreExtras.Solace.Server.Tests
                 null,
                 new[] { typeof(IMessage), typeof(BaseProperties) },
                 null);
-            var eventArgs = (MessageEventArgs)constructor.Invoke(
+
+            constructor.ShouldNotBeNull();
+
+            var eventArgs = (MessageEventArgs)constructor!.Invoke(
                 new object[]
                 {
                     message.Object,
                     Mock.Of<BaseProperties>()
                 });
 
-            onMessage(session.Object, eventArgs);
+            onMessage!(session.Object, eventArgs);
 
             await Task.Delay(100);
 
@@ -191,7 +196,7 @@ namespace AspNetCoreExtras.Solace.Server.Tests
 
         public class ApplicationContextMock
         {
-            public HttpContext HttpContext { get; set; }
+            public HttpContext? HttpContext { get; set; }
         }
     }
 }
