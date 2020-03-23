@@ -21,3 +21,9 @@ jobs:
       run: dotnet build
     - name: Test with dotnet
       run: dotnet test
+    - name: Publish Nuget
+      uses: rohith/publish-nuget@v2
+      with:
+        PROJECT_FILE_PATH: src/AspNetCoreExtras.Solace.Server.csproj
+        TAG_COMMIT: true
+        NUGET_KEY: ${{ secrets.NuGetAPIKey }}
