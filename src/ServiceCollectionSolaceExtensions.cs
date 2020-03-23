@@ -8,10 +8,18 @@ namespace AspNetCoreExtras.Solace.Server
 {
     public static class ServiceCollectionSolaceExtensions
     {
+        /// <summary>
+        /// Register Solace server and Solace context (see AddSolaceContext method).
+        /// </summary>
         public static IServiceCollection AddSolaceServer(this IServiceCollection services) =>
             services.AddSolaceContext()
                 .AddSingleton<IServer, SolaceServer>();
 
+        /// <summary>
+        /// Register singleton SolaceSystems.Solclient.Messaging.IContext,
+        /// initialize ContextFactory and forward Solace logging to
+        /// Microsoft.Extensions.Logging.
+        /// </summary>
         public static IServiceCollection AddSolaceContext(this IServiceCollection services) =>
             services
             .AddSingleton(provider =>
