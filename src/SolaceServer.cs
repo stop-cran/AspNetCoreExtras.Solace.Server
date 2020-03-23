@@ -20,7 +20,7 @@ namespace AspNetCoreExtras.Solace.Server
     public class SolaceServer : IServer, ISolaceServer
     {
         private readonly SolaceSettings solaceSettings;
-        private IContext? context;
+        private readonly IContext context;
         private readonly IReadOnlyList<ITopic> topics;
         private readonly ILogger<SolaceServer> logger;
 
@@ -30,8 +30,9 @@ namespace AspNetCoreExtras.Solace.Server
         private readonly CancellationTokenSource messageProcessingCancellation =
             new CancellationTokenSource();
 
-        public SolaceServer(IOptions<SolaceServerOptions> options, ILogger<SolaceServer> logger)
+        public SolaceServer(IContext context, IOptions<SolaceServerOptions> options, ILogger<SolaceServer> logger)
         {
+            this.context = context;
             this.logger = logger;
             solaceSettings = options.Value.Solace;
 
@@ -60,29 +61,6 @@ namespace AspNetCoreExtras.Solace.Server
         public SolaceSystems.Solclient.Messaging.ISession? Session { get; private set; }
 
         public IFeatureCollection Features { get; } = new FeatureCollection();
-
-        private void OnSolaceEvent(SolLogInfo info)
-        {
-            switch (info.LogLevel)
-            {
-                case SolLogLevel.Emergency:
-                case SolLogLevel.Alert:
-                case SolLogLevel.Critical:
-                case SolLogLevel.Error:
-                    if (info.LogException == null)
-                        logger.LogError("{0}: {1}", info.LoggerName, info.LogMessage);
-                    else
-                        logger.LogError(info.LogException, "{0}: {1}", info.LoggerName, info.LogMessage);
-                    break;
-
-                case SolLogLevel.Warning:
-                    if (info.LogException == null)
-                        logger.LogWarning("{0}: {1}", info.LoggerName, info.LogMessage);
-                    else
-                        logger.LogWarning(info.LogException, "{0}: {1}", info.LoggerName, info.LogMessage);
-                    break;
-            }
-        }
 
         public event EventHandler? Connected;
         public event EventHandler? Disconnected;
@@ -145,13 +123,6 @@ namespace AspNetCoreExtras.Solace.Server
 
             contextConverter = GetHttpContextConverter<TContext>();
 
-            ContextFactory.Instance.Init(new ContextFactoryProperties
-            {
-                SolClientLogLevel = SolLogLevel.Warning,
-                LogDelegate = OnSolaceEvent
-            });
-
-            context = ContextFactory.Instance.CreateContext(new ContextProperties(), null);
             Session = context.CreateSession(solaceSettings.SessionProperties,
                     (sender, e) => messages.Add(e.Message), (sender, e) => OnSessionEvent(e));
 
@@ -189,10 +160,24 @@ namespace AspNetCoreExtras.Solace.Server
 
         private async Task ProcessMessages<TContext>(IHttpApplication<TContext> application, CancellationToken cancellationToken)
         {
+            await Task.Yield();
+
             foreach (var message in messages.GetConsumingEnumerable(cancellationToken))
+            {
+                TContext context;
+                
+                try
+                { 
+                    context = application.CreateContext(Features)!;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Unexpected error cerating an application context.");
+                    continue;
+                }
+
                 try
                 {
-                    var context = application.CreateContext(Features)!;
                     var httpContext = contextConverter!(context);
                     using var responseStream = new MemoryStream();
 
@@ -217,11 +202,15 @@ namespace AspNetCoreExtras.Solace.Server
                             code = sendReplyReturnCode
                         }))
                             logger.LogError("Error sending response.");
+
+                    application.DisposeContext(context, null);
                 }
                 catch (Exception ex)
                 {
                     logger.LogError(ex, "Unexpected error processing message.");
+                    application.DisposeContext(context, ex);
                 }
+            }
         }
 
         private static Func<object, HttpContext> GetHttpContextConverter<TContext>()
@@ -242,6 +231,7 @@ namespace AspNetCoreExtras.Solace.Server
             request.ContentLength = requestMessage.BinaryAttachment.Length;
             request.ContentType = solaceSettings.ContentType;
 
+            request.Headers["Destination"] = requestMessage.Destination.Name;
             request.Headers["ApplicationMessageType"] = requestMessage.ApplicationMessageType;
 
             request.Body = new MemoryStream(requestMessage.BinaryAttachment);
@@ -250,7 +240,19 @@ namespace AspNetCoreExtras.Solace.Server
         protected virtual void FillResponse(HttpResponse response, IMessage responseMessage)
         {
             responseMessage.ApplicationMessageType = response.Headers["ApplicationMessageType"];
-            responseMessage.BinaryAttachment = ((MemoryStream)response.Body).ToArray();
+            responseMessage.BinaryAttachment = ReadAllBytes(response.Body);
+        }
+
+        private static byte[] ReadAllBytes(Stream stream)
+        {
+            if (stream is MemoryStream ms)
+                return ms.ToArray();
+
+            using var memoryStream = new MemoryStream();
+
+            stream.CopyTo(memoryStream);
+
+            return memoryStream.ToArray();
         }
 
         public async Task StopAsync(CancellationToken cancellationToken)
@@ -273,14 +275,10 @@ namespace AspNetCoreExtras.Solace.Server
         {
             messageProcessingCancellation.Dispose();
             messages.Dispose();
-
             Session?.Dispose();
-            context?.Dispose();
 
             foreach (var topic in topics)
                 topic.Dispose();
-
-            ContextFactory.Instance.Cleanup();
         }
     }
 }

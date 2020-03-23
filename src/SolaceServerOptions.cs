@@ -1,4 +1,6 @@
-﻿namespace AspNetCoreExtras.Solace.Server
+﻿using SolaceSystems.Solclient.Messaging;
+
+namespace AspNetCoreExtras.Solace.Server
 {
     public class SolaceServerOptions
     {
