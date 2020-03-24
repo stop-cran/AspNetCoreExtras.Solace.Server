@@ -168,6 +168,9 @@ namespace AspNetCoreExtras.Solace.Server.Tests
             message.Setup(m => m.Destination)
                 .Returns(Mock.Of<IDestination>());
 
+            message.Setup(m => m.ReplyTo)
+                .Returns(Mock.Of<IDestination>());
+
             var constructor = typeof(MessageEventArgs).GetConstructor(
                 BindingFlags.Instance | BindingFlags.NonPublic,
                 null,

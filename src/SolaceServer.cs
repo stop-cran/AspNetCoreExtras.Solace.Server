@@ -216,6 +216,7 @@ namespace AspNetCoreExtras.Solace.Server
             request.ContentType = solaceSettings.ContentType;
 
             request.Headers["Destination"] = requestMessage.Destination.Name;
+            request.Headers["ReplyTo"] = requestMessage.ReplyTo.Name;
             request.Headers["ApplicationMessageType"] = requestMessage.ApplicationMessageType;
 
             request.Body = new MemoryStream(requestMessage.BinaryAttachment);
