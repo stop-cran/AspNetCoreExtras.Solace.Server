@@ -61,11 +61,14 @@ public class SampleSolaceController : Controller
     [HttpPost("/mySolaceApplicationMessageType")]
     public IActionResult Post([FromBody]MySolaceParameters parameters)
     {
-        Response.Headers["ApplicationMessageType"] = "responseApplicationMessageType";
+        HttpContext.Features.Get<ISolaceFeature>()
+            .ResponseApplicationMessageType =
+            "responseApplicationMessageType";
 
         return Ok(new MySolaceResponse
         {
-            AnotherString = "sdsrt"
+            AnotherInt = 321,
+            AnotherString = "fgsfds"
         });
     }
 }

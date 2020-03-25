@@ -45,7 +45,7 @@ namespace AspNetCoreExtras.Solace.Server.Tests
                 {
                     this.onMessage = onMessage;
                 })
-                .Returns(session.Object);
+                .Returns(() => session.Object);
 
             session.Setup(s => s.CreateMessage())
                 .Returns(Mock.Of<IMessage>());
@@ -60,21 +60,23 @@ namespace AspNetCoreExtras.Solace.Server.Tests
                     }
                 });
             application.Setup(a => a.CreateContext(It.IsAny<FeatureCollection>()))
-                .Returns(new ApplicationContextMock
+                .Returns(() => new ApplicationContextMock
                 {
                     HttpContext = httpContext.Object
                 });
 
             httpRequest.SetupAllProperties();
-            httpRequest.Setup(r => r.Headers)
-                .Returns(Mock.Of<IHeaderDictionary>());
+            httpRequest.Setup(r => r.HttpContext)
+                .Returns(() => httpContext.Object);
             httpResponse.SetupAllProperties();
-            httpResponse.Setup(r => r.Headers)
-                .Returns(Mock.Of<IHeaderDictionary>());
+            httpResponse.Setup(r => r.HttpContext)
+                .Returns(() => httpContext.Object);
             httpContext.Setup(c => c.Request)
-                .Returns(httpRequest.Object);
+                .Returns(() => httpRequest.Object);
             httpContext.Setup(c => c.Response)
-                .Returns(httpResponse.Object);
+                .Returns(() => httpResponse.Object);
+            httpContext.SetupGet(c => c.Features)
+                .Returns(new FeatureCollection());
         }
 
         [Test]

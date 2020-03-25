@@ -120,9 +120,6 @@ namespace AspNetCoreExtras.Solace.Server
         public async Task StartAsync<TContext>(IHttpApplication<TContext> application, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            contextConverter = GetHttpContextConverter<TContext>();
-
             Session = context.CreateSession(solaceSettings.SessionProperties,
                     (sender, e) => messages.Add(e.Message), (sender, e) => OnSessionEvent(e));
 
@@ -166,7 +163,7 @@ namespace AspNetCoreExtras.Solace.Server
                 try
                 {
                     var context = application.CreateContext(Features)!;
-                    var httpContext = contextConverter!(context);
+                    var httpContext = HttpApplicationContextHelper<TContext>.GetHttpContext(context);
                     using var responseStream = new MemoryStream();
 
                     FillRequest(httpContext.Request, message);
@@ -197,47 +194,20 @@ namespace AspNetCoreExtras.Solace.Server
                 }
         }
 
-        private static Func<object, HttpContext> GetHttpContextConverter<TContext>()
-        {
-            var parameter = Expression.Parameter(typeof(object));
-
-            return Expression.Lambda<Func<object, HttpContext>>(
-                Expression.Property(
-                    Expression.Convert(parameter, typeof(TContext)),
-                    typeof(TContext).GetProperty("HttpContext")),
-                parameter).Compile();
-        }
-
         protected virtual void FillRequest(HttpRequest request, IMessage requestMessage)
         {
+            request.HttpContext.Features.Set<ISolaceFeature>(new SolaceFeature(requestMessage));
             request.Method = HttpMethods.Post;
-            request.Path = new PathString('/' + requestMessage.ApplicationMessageType);
+            request.Path = '/' + requestMessage.ApplicationMessageType;
             request.ContentLength = requestMessage.BinaryAttachment.Length;
-            request.ContentType = solaceSettings.ContentType;
-
-            request.Headers["Destination"] = requestMessage.Destination.Name;
-            request.Headers["ReplyTo"] = requestMessage.ReplyTo.Name;
-            request.Headers["ApplicationMessageType"] = requestMessage.ApplicationMessageType;
-
             request.Body = new MemoryStream(requestMessage.BinaryAttachment);
         }
 
         protected virtual void FillResponse(HttpResponse response, IMessage responseMessage)
         {
-            responseMessage.ApplicationMessageType = response.Headers["ApplicationMessageType"];
-            responseMessage.BinaryAttachment = ReadAllBytes(response.Body);
-        }
-
-        private static byte[] ReadAllBytes(Stream stream)
-        {
-            if (stream is MemoryStream ms)
-                return ms.ToArray();
-
-            using var memoryStream = new MemoryStream();
-
-            stream.CopyTo(memoryStream);
-
-            return memoryStream.ToArray();
+            responseMessage.ApplicationMessageType =
+                response.HttpContext.Features.Get<ISolaceFeature>().ResponseApplicationMessageType;
+            responseMessage.BinaryAttachment = response.Body.ReadAllBytes();
         }
 
         public async Task StopAsync(CancellationToken cancellationToken)
