@@ -165,6 +165,9 @@ namespace AspNetCoreExtras.Solace.Server.Tests
             var server = CreateServer();
             var message = CreateMessageMock();
 
+            message.Setup(m => m.ReplyTo)
+                .Returns(Mock.Of<IDestination>());
+
             await server.StartAsync(application.Object, default);
 
             onMessage.ShouldNotBeNull();
@@ -181,10 +184,6 @@ namespace AspNetCoreExtras.Solace.Server.Tests
         {
             session.Setup(s => s.Connect())
                 .Returns(ReturnCode.SOLCLIENT_OK);
-
-            application.Setup(a => a.ProcessRequestAsync(It.IsAny<ApplicationContextMock>()))
-                .Callback((ApplicationContextMock context) =>
-                    context.HttpContext!.Features.Get<ISolaceFeature>().IsOneWay = true);
 
             var server = CreateServer();
             var message = CreateMessageMock();
@@ -206,9 +205,6 @@ namespace AspNetCoreExtras.Solace.Server.Tests
             var message = new Mock<IMessage>();
 
             message.Setup(m => m.Destination)
-                .Returns(Mock.Of<IDestination>());
-
-            message.Setup(m => m.ReplyTo)
                 .Returns(Mock.Of<IDestination>());
 
             return message;

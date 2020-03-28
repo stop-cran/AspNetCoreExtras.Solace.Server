@@ -110,7 +110,6 @@ namespace AspNetCoreExtras.Solace.Server
             }
         }
 
-        private Func<object, HttpContext>? contextConverter;
         private Task? messageProcessingTask;
 
         public async Task StartAsync<TContext>(IHttpApplication<TContext> application, CancellationToken cancellationToken)
@@ -169,7 +168,7 @@ namespace AspNetCoreExtras.Solace.Server
 
                     await application.ProcessRequestAsync(context);
 
-                    if (!httpContext.Features.Get<ISolaceFeature>().IsOneWay)
+                    if (message.ReplyTo != null)
                     {
                         using var responseMessage = Session!.CreateMessage();
 
