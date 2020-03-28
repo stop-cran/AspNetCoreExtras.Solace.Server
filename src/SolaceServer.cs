@@ -169,20 +169,23 @@ namespace AspNetCoreExtras.Solace.Server
 
                     await application.ProcessRequestAsync(context);
 
-                    using var responseMessage = Session!.CreateMessage();
+                    if (!httpContext.Features.Get<ISolaceFeature>().IsOneWay)
+                    {
+                        using var responseMessage = Session!.CreateMessage();
 
-                    FillResponse(httpContext.Response, responseMessage);
+                        FillResponse(httpContext.Response, responseMessage);
 
-                    var sendReplyReturnCode = Session.SendReply(message, responseMessage);
+                        var sendReplyReturnCode = Session.SendReply(message, responseMessage);
 
-                    if (sendReplyReturnCode != ReturnCode.SOLCLIENT_OK)
-                        using (logger.BeginScope(new
-                        {
-                            host = solaceSettings.SessionProperties.Host,
-                            vpn = solaceSettings.SessionProperties.VPNName,
-                            code = sendReplyReturnCode
-                        }))
-                            logger.LogError("Error sending response.");
+                        if (sendReplyReturnCode != ReturnCode.SOLCLIENT_OK)
+                            using (logger.BeginScope(new
+                            {
+                                host = solaceSettings.SessionProperties.Host,
+                                vpn = solaceSettings.SessionProperties.VPNName,
+                                code = sendReplyReturnCode
+                            }))
+                                logger.LogError("Error sending response.");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -195,6 +198,7 @@ namespace AspNetCoreExtras.Solace.Server
             request.HttpContext.Features.Set<IEndpointFeature>(null!);
             request.HttpContext.Features.Set<IRouteValuesFeature>(null!);
             request.HttpContext.Features.Set<ISolaceFeature>(new SolaceFeature(requestMessage));
+
             request.Method = HttpMethods.Post;
             request.Path = '/' + requestMessage.ApplicationMessageType;
             request.ContentLength = requestMessage.BinaryAttachment.Length;

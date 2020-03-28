@@ -24,5 +24,6 @@ namespace AspNetCoreExtras.Solace.Server
         public string ResponseApplicationMessageType { get; set; } = "";
         public IDestination RequestDestination { get; }
         public IDestination ResponseDestination { get; }
+        public bool IsOneWay { get; set; }
     }
 }

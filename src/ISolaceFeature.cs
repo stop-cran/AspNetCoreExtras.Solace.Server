@@ -8,5 +8,6 @@ namespace AspNetCoreExtras.Solace.Server
         string ResponseApplicationMessageType { get; set; }
         IDestination RequestDestination { get; }
         IDestination ResponseDestination { get; }
+        public bool IsOneWay { get; set; }
     }
 }

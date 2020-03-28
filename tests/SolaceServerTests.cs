@@ -4,11 +4,13 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
+using Moq.Protected;
 using NUnit.Framework;
 using Shouldly;
 using SolaceSystems.Solclient.Messaging;
 using System;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace AspNetCoreExtras.Solace.Server.Tests
@@ -30,6 +32,7 @@ namespace AspNetCoreExtras.Solace.Server.Tests
         {
             onMessage = null;
             context = new Mock<IContext>();
+            session = new Mock<SolaceSystems.Solclient.Messaging.ISession>();
             options = new Mock<IOptions<SolaceServerOptions>>();
             application = new Mock<IHttpApplication<ApplicationContextMock>>();
             logger = new Mock<ILogger<SolaceServer>>();
@@ -160,11 +163,46 @@ namespace AspNetCoreExtras.Solace.Server.Tests
                 .Returns(ReturnCode.SOLCLIENT_OK);
 
             var server = CreateServer();
+            var message = CreateMessageMock();
 
             await server.StartAsync(application.Object, default);
 
             onMessage.ShouldNotBeNull();
 
+            onMessage!(session.Object, CreateMessageEventArgs(message.Object));
+
+            await Task.Delay(100);
+
+            application.Verify(a => a.ProcessRequestAsync(It.IsAny<ApplicationContextMock>()));
+        }
+
+        [Test]
+        public async Task ShouldProcessMessageOneWay()
+        {
+            session.Setup(s => s.Connect())
+                .Returns(ReturnCode.SOLCLIENT_OK);
+
+            application.Setup(a => a.ProcessRequestAsync(It.IsAny<ApplicationContextMock>()))
+                .Callback((ApplicationContextMock context) =>
+                    context.HttpContext!.Features.Get<ISolaceFeature>().IsOneWay = true);
+
+            var server = CreateServer();
+            var message = CreateMessageMock();
+
+            await server.StartAsync(application.Object, default);
+
+            onMessage.ShouldNotBeNull();
+
+            onMessage!(session.Object, CreateMessageEventArgs(message.Object));
+
+            await Task.Delay(100);
+
+            application.Verify(a => a.ProcessRequestAsync(It.IsAny<ApplicationContextMock>()));
+            session.Verify(s => s.CreateMessage(), Times.Never());
+        }
+
+        private Mock<IMessage> CreateMessageMock()
+        {
             var message = new Mock<IMessage>();
 
             message.Setup(m => m.Destination)
@@ -173,6 +211,11 @@ namespace AspNetCoreExtras.Solace.Server.Tests
             message.Setup(m => m.ReplyTo)
                 .Returns(Mock.Of<IDestination>());
 
+            return message;
+        }
+
+        private MessageEventArgs CreateMessageEventArgs(IMessage message)
+        {
             var constructor = typeof(MessageEventArgs).GetConstructor(
                 BindingFlags.Instance | BindingFlags.NonPublic,
                 null,
@@ -181,18 +224,12 @@ namespace AspNetCoreExtras.Solace.Server.Tests
 
             constructor.ShouldNotBeNull();
 
-            var eventArgs = (MessageEventArgs)constructor!.Invoke(
+            return (MessageEventArgs)constructor!.Invoke(
                 new object[]
                 {
-                    message.Object,
+                    message,
                     Mock.Of<BaseProperties>()
                 });
-
-            onMessage!(session.Object, eventArgs);
-
-            await Task.Delay(100);
-
-            application.Verify(a => a.ProcessRequestAsync(It.IsAny<ApplicationContextMock>()));
         }
 
         private SolaceServer CreateServer() =>
