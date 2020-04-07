@@ -47,6 +47,8 @@ namespace AspNetCoreExtras.Solace.Server
             Features.Set<IHttpRequestFeature>(new HttpRequestFeature());
             Features.Set<IHttpResponseFeature>(new HttpResponseFeature());
             Features.Set<IServerAddressesFeature>(addressFeature);
+            Features.Set<ISolaceFeature>(
+                new SolaceFeature("", ContextFactory.Instance.CreateTopic(""), null));
 
             topics = options.Value.Solace.Topics
                 .Select(ContextFactory.Instance.CreateTopic)
@@ -196,7 +198,6 @@ namespace AspNetCoreExtras.Solace.Server
         {
             request.HttpContext.Features.Set<IEndpointFeature>(null!);
             request.HttpContext.Features.Set<IRouteValuesFeature>(null!);
-            request.HttpContext.Features.Set<ISolaceFeature>(new SolaceFeature(requestMessage));
 
             request.Method = HttpMethods.Post;
             request.Path = '/' + requestMessage.ApplicationMessageType;

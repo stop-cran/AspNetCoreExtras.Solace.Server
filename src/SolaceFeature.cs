@@ -13,7 +13,7 @@ namespace AspNetCoreExtras.Solace.Server
         public SolaceFeature(
             string requestApplicationMessageType,
             IDestination requestDestination,
-            IDestination responseDestination)
+            IDestination? responseDestination)
         {
             RequestApplicationMessageType = requestApplicationMessageType;
             RequestDestination = requestDestination;
@@ -21,8 +21,8 @@ namespace AspNetCoreExtras.Solace.Server
         }
 
         public string RequestApplicationMessageType { get; }
-        public string ResponseApplicationMessageType { get; set; } = "";
+        public string? ResponseApplicationMessageType { get; set; }
         public IDestination RequestDestination { get; }
-        public IDestination ResponseDestination { get; }
+        public IDestination? ResponseDestination { get; }
     }
 }
