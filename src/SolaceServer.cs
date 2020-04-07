@@ -160,7 +160,7 @@ namespace AspNetCoreExtras.Solace.Server
             foreach (var message in messages.GetConsumingEnumerable(cancellationToken))
                 try
                 {
-                    var context = application.CreateContext(Features)!;
+                    var context = application.CreateContext(new FeatureCollection(Features))!;
 
                     try
                     {
