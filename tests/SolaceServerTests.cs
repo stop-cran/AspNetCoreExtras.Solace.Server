@@ -56,11 +56,8 @@ namespace AspNetCoreExtras.Solace.Server.Tests
             options.Setup(op => op.Value)
                 .Returns(new SolaceServerOptions
                 {
-                    Solace = new SolaceSettings
-                    {
-                        Topics = new[] { "testTopic" },
-                        MaxParallelRequests = 1
-                    }
+                    Topics = new[] { "testTopic" },
+                    MaxParallelRequests = 1
                 });
             application.Setup(a => a.CreateContext(It.IsAny<FeatureCollection>()))
                 .Returns(() => new ApplicationContextMock
@@ -167,6 +164,41 @@ namespace AspNetCoreExtras.Solace.Server.Tests
 
             message.Setup(m => m.ReplyTo)
                 .Returns(Mock.Of<IDestination>());
+
+            await server.StartAsync(application.Object, default);
+
+            onMessage.ShouldNotBeNull();
+
+            onMessage!(session.Object, CreateMessageEventArgs(message.Object));
+
+            await Task.Delay(100);
+
+            application.Verify(a => a.ProcessRequestAsync(It.IsAny<ApplicationContextMock>()));
+        }
+
+        [Test, TestCase("test")]
+        public async Task ShouldAssignSolaceFeature(string applicationMessageType)
+        {
+            session.Setup(s => s.Connect())
+                .Returns(ReturnCode.SOLCLIENT_OK);
+
+            var server = CreateServer();
+            var message = CreateMessageMock();
+
+            message.Setup(m => m.ReplyTo)
+                .Returns(Mock.Of<IDestination>());
+            message.Setup(m => m.ApplicationMessageType)
+                .Returns(applicationMessageType);
+            application.Setup(a => a.ProcessRequestAsync(It.IsAny<ApplicationContextMock>()))
+                .Callback<ApplicationContextMock>(context =>
+                {
+                    context.HttpContext.ShouldNotBeNull();
+
+                    var feature = context.HttpContext!.Features.Get<ISolaceFeature>();
+
+                    feature.ShouldNotBeNull();
+                    feature.RequestApplicationMessageType.ShouldBe(applicationMessageType);
+                });
 
             await server.StartAsync(application.Object, default);
 

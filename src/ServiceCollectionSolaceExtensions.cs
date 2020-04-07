@@ -30,7 +30,7 @@ namespace AspNetCoreExtras.Solace.Server
                 ContextFactory.Instance.Init(new ContextFactoryProperties
                 {
                     SolClientLogLevel = provider.GetRequiredService<IOptions<SolaceServerOptions>>()
-                        .Value.Solace.SolClientLogLevel,
+                        .Value.SolClientLogLevel,
                     LogDelegate = logInfo => OnSolaceEvent(logInfo, contextFactorlogger)
                 });
 

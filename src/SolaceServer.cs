@@ -19,7 +19,7 @@ namespace AspNetCoreExtras.Solace.Server
 {
     public class SolaceServer : IServer, ISolaceServer
     {
-        private readonly SolaceSettings solaceSettings;
+        private readonly SolaceServerOptions options;
         private readonly IContext context;
         private readonly IReadOnlyList<ITopic> topics;
         private readonly ILogger<SolaceServer> logger;
@@ -34,14 +34,14 @@ namespace AspNetCoreExtras.Solace.Server
         {
             this.context = context;
             this.logger = logger;
-            solaceSettings = options.Value.Solace;
+            this.options = options.Value;
 
             var addressFeature = new ServerAddressesFeature();
 
-            foreach (var topic in options.Value.Solace.Topics)
+            foreach (var topic in options.Value.Topics)
                 addressFeature.Addresses.Add(
-                    solaceSettings.SessionProperties.Host + ':' +
-                    solaceSettings.SessionProperties.VPNName + ':'
+                    this.options.SessionProperties.Host + ':' +
+                    this.options.SessionProperties.VPNName + ':'
                     + topic);
 
             Features.Set<IHttpRequestFeature>(new HttpRequestFeature());
@@ -50,7 +50,7 @@ namespace AspNetCoreExtras.Solace.Server
             Features.Set<ISolaceFeature>(
                 new SolaceFeature("", ContextFactory.Instance.CreateTopic(""), null));
 
-            topics = options.Value.Solace.Topics
+            topics = this.options.Topics
                 .Select(ContextFactory.Instance.CreateTopic)
                 .ToList()
                 .AsReadOnly();
@@ -117,7 +117,7 @@ namespace AspNetCoreExtras.Solace.Server
         public async Task StartAsync<TContext>(IHttpApplication<TContext> application, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Session = context.CreateSession(solaceSettings.SessionProperties,
+            Session = context.CreateSession(options.SessionProperties,
                     (sender, e) => messages.Add(e.Message), (sender, e) => OnSessionEvent(e));
 
             var connectReturnCode = await Task.Run(Session.Connect);
@@ -125,9 +125,9 @@ namespace AspNetCoreExtras.Solace.Server
             if (connectReturnCode != ReturnCode.SOLCLIENT_OK)
                 using (logger.BeginScope(new
                 {
-                    host = solaceSettings.SessionProperties.Host,
-                    vpn = solaceSettings.SessionProperties.VPNName,
-                    userName = solaceSettings.SessionProperties.UserName,
+                    host = options.SessionProperties.Host,
+                    vpn = options.SessionProperties.VPNName,
+                    userName = options.SessionProperties.UserName,
                     code = connectReturnCode
                 }))
                     logger.LogError("Error connecting Solace.");
@@ -139,15 +139,15 @@ namespace AspNetCoreExtras.Solace.Server
                 if (subscribeReturnCode != ReturnCode.SOLCLIENT_OK)
                     using (logger.BeginScope(new
                     {
-                        host = solaceSettings.SessionProperties.Host,
-                        vpn = solaceSettings.SessionProperties.VPNName,
+                        host = options.SessionProperties.Host,
+                        vpn = options.SessionProperties.VPNName,
                         topic,
                         code = subscribeReturnCode
                     }))
                         logger.LogError("Error subscribing Solace topic.");
             }
 
-            messageProcessingTask = Task.WhenAll(Enumerable.Range(0, solaceSettings.MaxParallelRequests)
+            messageProcessingTask = Task.WhenAll(Enumerable.Range(0, options.MaxParallelRequests)
                 .Select(_ => ProcessMessages(application, messageProcessingCancellation.Token))
                 .ToArray());
         }
@@ -181,8 +181,8 @@ namespace AspNetCoreExtras.Solace.Server
                         if (sendReplyReturnCode != ReturnCode.SOLCLIENT_OK)
                             using (logger.BeginScope(new
                             {
-                                host = solaceSettings.SessionProperties.Host,
-                                vpn = solaceSettings.SessionProperties.VPNName,
+                                host = options.SessionProperties.Host,
+                                vpn = options.SessionProperties.VPNName,
                                 code = sendReplyReturnCode
                             }))
                                 logger.LogError("Error sending response.");
@@ -198,6 +198,7 @@ namespace AspNetCoreExtras.Solace.Server
         {
             request.HttpContext.Features.Set<IEndpointFeature>(null!);
             request.HttpContext.Features.Set<IRouteValuesFeature>(null!);
+            request.HttpContext.Features.Set<ISolaceFeature>(new SolaceFeature(requestMessage));
 
             request.Method = HttpMethods.Post;
             request.Path = '/' + requestMessage.ApplicationMessageType;
