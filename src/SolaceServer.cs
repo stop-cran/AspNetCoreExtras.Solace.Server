@@ -156,36 +156,48 @@ namespace AspNetCoreExtras.Solace.Server
         {
             await Task.Yield();
 
+
             foreach (var message in messages.GetConsumingEnumerable(cancellationToken))
                 try
                 {
                     var context = application.CreateContext(Features)!;
-                    var httpContext = HttpApplicationContextHelper<TContext>.GetHttpContext(context);
-                    using var responseStream = new MemoryStream();
 
-                    FillRequest(httpContext.Request, message);
-
-                    httpContext.Response.ContentType = httpContext.Request.ContentType;
-                    httpContext.Response.Body = responseStream;
-
-                    await application.ProcessRequestAsync(context);
-
-                    if (message.ReplyTo != null)
+                    try
                     {
-                        using var responseMessage = Session!.CreateMessage();
+                        var httpContext = HttpApplicationContextHelper<TContext>.GetHttpContext(context);
+                        using var responseStream = new MemoryStream();
 
-                        FillResponse(httpContext.Response, responseMessage);
+                        FillRequest(httpContext.Request, message);
 
-                        var sendReplyReturnCode = Session.SendReply(message, responseMessage);
+                        httpContext.Response.ContentType = httpContext.Request.ContentType;
+                        httpContext.Response.Body = responseStream;
 
-                        if (sendReplyReturnCode != ReturnCode.SOLCLIENT_OK)
-                            using (logger.BeginScope(new
-                            {
-                                host = options.SessionProperties.Host,
-                                vpn = options.SessionProperties.VPNName,
-                                code = sendReplyReturnCode
-                            }))
-                                logger.LogError("Error sending response.");
+                        await application.ProcessRequestAsync(context);
+
+                        if (message.ReplyTo != null)
+                        {
+                            using var responseMessage = Session!.CreateMessage();
+
+                            FillResponse(httpContext.Response, responseMessage);
+
+                            var sendReplyReturnCode = Session.SendReply(message, responseMessage);
+
+                            if (sendReplyReturnCode != ReturnCode.SOLCLIENT_OK)
+                                using (logger.BeginScope(new
+                                {
+                                    host = options.SessionProperties.Host,
+                                    vpn = options.SessionProperties.VPNName,
+                                    code = sendReplyReturnCode
+                                }))
+                                    logger.LogError("Error sending response.");
+                        }
+
+                        application.DisposeContext(context, null);
+                    }
+                    catch(Exception ex)
+                    {
+                        application.DisposeContext(context, ex);
+                        throw;
                     }
                 }
                 catch (Exception ex)
