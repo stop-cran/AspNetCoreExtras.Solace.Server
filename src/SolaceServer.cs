@@ -221,8 +221,6 @@ namespace AspNetCoreExtras.Solace.Server
 
         protected virtual void FillRequest(HttpRequest request, IMessage requestMessage)
         {
-            request.HttpContext.Features.Set<IEndpointFeature>(null!);
-            request.HttpContext.Features.Set<IRouteValuesFeature>(null!);
             request.HttpContext.Features.Set<ISolaceFeature>(new SolaceFeature(requestMessage));
 
             request.Method = HttpMethods.Post;
