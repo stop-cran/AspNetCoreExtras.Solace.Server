@@ -176,6 +176,30 @@ namespace AspNetCoreExtras.Solace.Server.Tests
             application.Verify(a => a.ProcessRequestAsync(It.IsAny<ApplicationContextMock>()));
         }
 
+        [Test]
+        public async Task ShouldProcessTwoMessages()
+        {
+            session.Setup(s => s.Connect())
+                .Returns(ReturnCode.SOLCLIENT_OK);
+
+            var server = CreateServer();
+            var message = CreateMessageMock();
+
+            message.Setup(m => m.ReplyTo)
+                .Returns(Mock.Of<IDestination>());
+
+            await server.StartAsync(application.Object, default);
+
+            onMessage.ShouldNotBeNull();
+
+            onMessage!(session.Object, CreateMessageEventArgs(message.Object));
+            onMessage!(session.Object, CreateMessageEventArgs(message.Object));
+
+            await Task.Delay(100);
+
+            application.Verify(a => a.ProcessRequestAsync(It.IsAny<ApplicationContextMock>()), Times.Exactly(2));
+        }
+
         [Test, TestCase("test")]
         public async Task ShouldAssignSolaceFeature(string applicationMessageType)
         {
