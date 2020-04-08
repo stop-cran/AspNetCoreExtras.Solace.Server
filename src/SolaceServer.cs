@@ -82,10 +82,9 @@ namespace AspNetCoreExtras.Solace.Server
             using (logger.BeginScope(new
             {
                 @event = args.Event,
-                code = args.ResponseCode,
-                info = args.Info
+                code = args.ResponseCode
             }))
-                logger.Log(ToLogLevel(args.Event), "Solace event.");
+                logger.Log(ToLogLevel(args.Event), args.Info);
         }
 
         private static LogLevel ToLogLevel(SessionEvent sessionEvent)
@@ -117,20 +116,33 @@ namespace AspNetCoreExtras.Solace.Server
         public async Task StartAsync<TContext>(IHttpApplication<TContext> application, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            using var _ = logger.BeginScope(new
+            {
+                host = options.SessionProperties.Host,
+                vpn = options.SessionProperties.VPNName
+            });
+
+            logger.LogDebug("The server is starting...");
+            logger.LogDebug("Creating Solace session...");
+
             Session = context.CreateSession(options.SessionProperties,
-                    (sender, e) => messages.Add(e.Message), (sender, e) => OnSessionEvent(e));
+                (sender, e) => messages.Add(e.Message),
+                (sender, e) => OnSessionEvent(e));
+
+            logger.LogDebug("Connecting session...");
 
             var connectReturnCode = await Task.Run(Session.Connect);
 
             if (connectReturnCode != ReturnCode.SOLCLIENT_OK)
                 using (logger.BeginScope(new
                 {
-                    host = options.SessionProperties.Host,
-                    vpn = options.SessionProperties.VPNName,
                     userName = options.SessionProperties.UserName,
                     code = connectReturnCode
                 }))
                     logger.LogError("Error connecting Solace.");
+
+            logger.LogDebug("Subscribing...");
 
             foreach (var topic in topics)
             {
@@ -139,23 +151,24 @@ namespace AspNetCoreExtras.Solace.Server
                 if (subscribeReturnCode != ReturnCode.SOLCLIENT_OK)
                     using (logger.BeginScope(new
                     {
-                        host = options.SessionProperties.Host,
-                        vpn = options.SessionProperties.VPNName,
                         topic,
                         code = subscribeReturnCode
                     }))
                         logger.LogError("Error subscribing Solace topic.");
             }
 
+            logger.LogDebug("Starting message processing loop...");
+
             messageProcessingTask = Task.WhenAll(Enumerable.Range(0, options.MaxParallelRequests)
                 .Select(_ => ProcessMessages(application, messageProcessingCancellation.Token))
                 .ToArray());
+
+            logger.LogInformation("The server has been started...");
         }
 
         private async Task ProcessMessages<TContext>(IHttpApplication<TContext> application, CancellationToken cancellationToken)
         {
             await Task.Yield();
-
 
             foreach (var message in messages.GetConsumingEnumerable(cancellationToken))
                 try
@@ -194,7 +207,7 @@ namespace AspNetCoreExtras.Solace.Server
 
                         application.DisposeContext(context, null);
                     }
-                    catch(Exception ex)
+                    catch (Exception ex)
                     {
                         application.DisposeContext(context, ex);
                         throw;
@@ -229,7 +242,17 @@ namespace AspNetCoreExtras.Solace.Server
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            using var _ = logger.BeginScope(new
+            {
+                host = options.SessionProperties.Host,
+                vpn = options.SessionProperties.VPNName
+            });
+
+            logger.LogDebug("The server is stopping...");
+
             messageProcessingCancellation.Cancel();
+
+            logger.LogDebug("Waiting for the message loop to exit...");
 
             try
             {
@@ -238,17 +261,31 @@ namespace AspNetCoreExtras.Solace.Server
             catch (OperationCanceledException)
             { }
 
+            logger.LogDebug("Disconnecting the session...");
+
             Session!.Disconnect();
+
+            logger.LogInformation("The server has been stopped...");
         }
 
         public virtual void Dispose()
         {
+            using var _ = logger.BeginScope(new
+            {
+                host = options.SessionProperties.Host,
+                vpn = options.SessionProperties.VPNName
+            });
+
+            logger.LogDebug("Disposing...");
+
             messageProcessingCancellation.Dispose();
             messages.Dispose();
             Session?.Dispose();
 
             foreach (var topic in topics)
                 topic.Dispose();
+
+            logger.LogDebug("Disposed...");
         }
     }
 }
