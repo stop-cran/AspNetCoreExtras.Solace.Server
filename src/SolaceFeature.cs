@@ -7,22 +7,26 @@ namespace AspNetCoreExtras.Solace.Server
         public SolaceFeature(IMessage requestMessage) : this(
             requestMessage.ApplicationMessageType,
             requestMessage.Destination,
-            requestMessage.ReplyTo)
+            requestMessage.ReplyTo,
+            requestMessage.CorrelationId)
         { }
 
         public SolaceFeature(
             string requestApplicationMessageType,
             IDestination requestDestination,
-            IDestination? responseDestination)
+            IDestination? responseDestination,
+            string? correlationId)
         {
             RequestApplicationMessageType = requestApplicationMessageType;
             RequestDestination = requestDestination;
             ResponseDestination = responseDestination;
+            CorrelationId = correlationId;
         }
 
         public string RequestApplicationMessageType { get; }
         public string? ResponseApplicationMessageType { get; set; }
         public IDestination RequestDestination { get; }
         public IDestination? ResponseDestination { get; }
+        public string? CorrelationId { get; }
     }
 }

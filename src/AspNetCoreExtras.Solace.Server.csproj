@@ -11,7 +11,7 @@
     <RepositoryUrl>https://github.com/stop-cran/AspNetCoreExtras.Solace.Server.git</RepositoryUrl>
     <PackageTags>aspnetcore solace</PackageTags>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>1.3.5</Version>
+    <Version>1.4.0</Version>
     <Copyright>stop-cran, 2020</Copyright>
     <PackageReleaseNotes>Use HttpContext feature rather than headers.</PackageReleaseNotes>
   </PropertyGroup>

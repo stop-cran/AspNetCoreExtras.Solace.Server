@@ -24,8 +24,8 @@ namespace AspNetCoreExtras.Solace.Server
         private readonly IReadOnlyList<ITopic> topics;
         private readonly ILogger<SolaceServer> logger;
 
-        private readonly BlockingCollection<IMessage> messages =
-            new BlockingCollection<IMessage>();
+        private readonly BlockingCollection<object> contexts =
+            new BlockingCollection<object>();
 
         private readonly CancellationTokenSource messageProcessingCancellation =
             new CancellationTokenSource();
@@ -48,7 +48,7 @@ namespace AspNetCoreExtras.Solace.Server
             Features.Set<IHttpResponseFeature>(new HttpResponseFeature());
             Features.Set<IServerAddressesFeature>(addressFeature);
             Features.Set<ISolaceFeature>(
-                new SolaceFeature("", ContextFactory.Instance.CreateTopic(""), null));
+                new SolaceFeature("", ContextFactory.Instance.CreateTopic(""), null, null));
 
             topics = this.options.Topics
                 .Select(ContextFactory.Instance.CreateTopic)
@@ -127,7 +127,7 @@ namespace AspNetCoreExtras.Solace.Server
             logger.LogDebug("Creating Solace session...");
 
             Session = context.CreateSession(options.SessionProperties,
-                (sender, e) => messages.Add(e.Message),
+                (sender, e) => EnqueueMessage(application, e.Message),
                 (sender, e) => OnSessionEvent(e));
 
             logger.LogDebug("Connecting session...");
@@ -166,56 +166,84 @@ namespace AspNetCoreExtras.Solace.Server
             logger.LogInformation("The server has been started...");
         }
 
+        private void EnqueueMessage<TContext>(IHttpApplication<TContext> application, IMessage message)
+        {
+            try
+            {
+                var context = CreateContext(application, message);
+
+                if (context != null)
+                    contexts.Add(context);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Unexpected error creating the app context.");
+            }
+        }
+
+        private TContext CreateContext<TContext>(IHttpApplication<TContext> application, IMessage message)
+        {
+            var context = application.CreateContext(new FeatureCollection(Features))!;
+
+            try
+            {
+                var httpContext = HttpApplicationContextHelper<TContext>.GetHttpContext(context);
+
+                FillRequest(httpContext.Request, message);
+
+                return context;
+            }
+            catch (Exception ex)
+            {
+                application.DisposeContext(context, ex);
+                throw;
+            }
+        }
+
         private async Task ProcessMessages<TContext>(IHttpApplication<TContext> application, CancellationToken cancellationToken)
         {
             await Task.Yield();
 
-            foreach (var message in messages.GetConsumingEnumerable(cancellationToken))
+            foreach (TContext context in contexts.GetConsumingEnumerable(cancellationToken))
                 try
                 {
-                    var context = application.CreateContext(new FeatureCollection(Features))!;
+                    var httpContext = HttpApplicationContextHelper<TContext>.GetHttpContext(context);
+                    using var responseStream = new MemoryStream();
 
-                    try
+                    httpContext.Response.ContentType = httpContext.Request.ContentType;
+                    httpContext.Response.Body = responseStream;
+
+                    await application.ProcessRequestAsync(context);
+
+                    var solaceFeature = httpContext.Features.Get<ISolaceFeature>();
+
+                    if (solaceFeature.ResponseDestination != null)
                     {
-                        var httpContext = HttpApplicationContextHelper<TContext>.GetHttpContext(context);
-                        using var responseStream = new MemoryStream();
+                        using var responseMessage = Session!.CreateMessage();
 
-                        FillRequest(httpContext.Request, message);
+                        responseMessage.Destination = solaceFeature.ResponseDestination;
+                        responseMessage.CorrelationId = solaceFeature.CorrelationId;
 
-                        httpContext.Response.ContentType = httpContext.Request.ContentType;
-                        httpContext.Response.Body = responseStream;
+                        FillResponse(httpContext.Response, responseMessage);
 
-                        await application.ProcessRequestAsync(context);
+                        var sendReplyReturnCode = Session.Send(responseMessage);
 
-                        if (message.ReplyTo != null)
-                        {
-                            using var responseMessage = Session!.CreateMessage();
-
-                            FillResponse(httpContext.Response, responseMessage);
-
-                            var sendReplyReturnCode = Session.SendReply(message, responseMessage);
-
-                            if (sendReplyReturnCode != ReturnCode.SOLCLIENT_OK)
-                                using (logger.BeginScope(new
-                                {
-                                    host = options.SessionProperties.Host,
-                                    vpn = options.SessionProperties.VPNName,
-                                    code = sendReplyReturnCode
-                                }))
-                                    logger.LogError("Error sending response.");
-                        }
-
-                        application.DisposeContext(context, null);
+                        if (sendReplyReturnCode != ReturnCode.SOLCLIENT_OK)
+                            using (logger.BeginScope(new
+                            {
+                                host = options.SessionProperties.Host,
+                                vpn = options.SessionProperties.VPNName,
+                                code = sendReplyReturnCode
+                            }))
+                                logger.LogError("Error sending response.");
                     }
-                    catch (Exception ex)
-                    {
-                        application.DisposeContext(context, ex);
-                        throw;
-                    }
+
+                    application.DisposeContext(context, null);
                 }
                 catch (Exception ex)
                 {
                     logger.LogError(ex, "Unexpected error processing message.");
+                    application.DisposeContext(context, ex);
                 }
         }
 
@@ -277,7 +305,7 @@ namespace AspNetCoreExtras.Solace.Server
             logger.LogDebug("Disposing...");
 
             messageProcessingCancellation.Dispose();
-            messages.Dispose();
+            contexts.Dispose();
             Session?.Dispose();
 
             foreach (var topic in topics)
