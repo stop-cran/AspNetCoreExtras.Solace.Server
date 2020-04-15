@@ -2,7 +2,6 @@
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
-using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SolaceSystems.Solclient.Messaging;
@@ -11,7 +10,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -58,9 +56,12 @@ namespace AspNetCoreExtras.Solace.Server
 
         public SolaceSystems.Solclient.Messaging.ISession? Session { get; private set; }
 
+        public int QueuedMessagesCount => messages.Count;
+
         public IFeatureCollection Features { get; } = new FeatureCollection();
 
         public event EventHandler? Connected;
+
         public event EventHandler? Disconnected;
 
         private void OnSessionEvent(SessionEventArgs args)
