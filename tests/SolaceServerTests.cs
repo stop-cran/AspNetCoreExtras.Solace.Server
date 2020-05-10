@@ -56,8 +56,7 @@ namespace AspNetCoreExtras.Solace.Server.Tests
             options.Setup(op => op.Value)
                 .Returns(new SolaceServerOptions
                 {
-                    Topics = new[] { "testTopic" },
-                    MaxParallelRequests = 1
+                    Topics = new[] { "testTopic" }
                 });
             application.Setup(a => a.CreateContext(It.IsAny<FeatureCollection>()))
                 .Returns(() => new ApplicationContextMock

@@ -128,7 +128,11 @@ namespace AspNetCoreExtras.Solace.Server
             logger.LogDebug("Creating Solace session...");
 
             Session = context.CreateSession(options.SessionProperties,
-                (sender, e) => messages.Add((e.Message, GetData(e.Message))),
+                (sender, e) =>
+                {
+                    if (ShouldProcessMessage(e.Message))
+                        messages.Add((e.Message, GetData(e.Message)));
+                },
                 (sender, e) => OnSessionEvent(e));
 
             logger.LogDebug("Connecting session...");
@@ -160,14 +164,13 @@ namespace AspNetCoreExtras.Solace.Server
 
             logger.LogDebug("Starting message processing loop...");
 
-            messageProcessingTask = Task.WhenAll(Enumerable.Range(0, options.MaxParallelRequests)
-                .Select(_ => ProcessMessages(application, messageProcessingCancellation.Token))
-                .ToArray());
+            messageProcessingTask = ProcessMessages(application, messageProcessingCancellation.Token);
 
             logger.LogInformation("The server has been started...");
         }
 
         protected virtual object? GetData(IMessage message) => null;
+        protected virtual bool ShouldProcessMessage(IMessage message) => true;
 
         private async Task ProcessMessages<TContext>(IHttpApplication<TContext> application, CancellationToken cancellationToken)
         {
