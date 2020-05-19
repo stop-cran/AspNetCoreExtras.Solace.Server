@@ -162,7 +162,11 @@ Startup services configuration:
 ```C#
 public void ConfigureServices(IServiceCollection services)
 {
-    services.AddSolaceContext();
+    // Read Solace settings from the app config.
+    services.Configure<SolaceServerOptions>(Configuration.GetSection("Solace"));
+    services.Configure<SessionProperties>(Configuration.GetSection("Solace:SessionProperties"));
+    services.AddSolaceObservableSession();
+    services.AddHostedService(services => services.GetRequiredService<IObservableSession>());
     services.AddSingleton<SolaceServer>();
     services.AddSingleton<KestrelServer>();
     services.AddSingleton<IServer, SolaceAndKestrelServer>();
