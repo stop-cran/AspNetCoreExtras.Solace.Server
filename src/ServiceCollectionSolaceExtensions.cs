@@ -9,11 +9,18 @@ namespace AspNetCoreExtras.Solace.Server
     public static class ServiceCollectionSolaceExtensions
     {
         /// <summary>
-        /// Register Solace server and Solace context (see AddSolaceContext method).
+        /// Register Solace server, IObservableSession and SolaceSystems.Solclient.Messaging.IContext (see AddSolaceObservableSession method).
         /// </summary>
         public static IServiceCollection AddSolaceServer(this IServiceCollection services) =>
-            services.AddSolaceContext()
+            services.AddSolaceObservableSession()
                 .AddSingleton<IServer, SolaceServer>();
+
+        /// <summary>
+        /// Register IObservableSession and SolaceSystems.Solclient.Messaging.IContext (see AddSolaceContext method).
+        /// </summary>
+        public static IServiceCollection AddSolaceObservableSession(this IServiceCollection services) =>
+            services.AddSolaceContext()
+                .AddSingleton<IObservableSession, ObservableSession>();
 
         /// <summary>
         /// Register singleton SolaceSystems.Solclient.Messaging.IContext,

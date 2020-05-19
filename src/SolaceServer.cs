@@ -6,223 +6,183 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SolaceSystems.Solclient.Messaging;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
+using System.Reactive;
+using System.Reactive.Linq;
+using System.Reactive.Subjects;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace AspNetCoreExtras.Solace.Server
 {
-    public class SolaceServer : IServer, ISolaceServer
+    public class SolaceServer : IServer
     {
-        private readonly SolaceServerOptions options;
-        private readonly IContext context;
-        private readonly IReadOnlyList<ITopic> topics;
+        private readonly IObservableSession session;
+        private readonly IOptions<SolaceServerOptions> options;
         private readonly ILogger<SolaceServer> logger;
-
-        private readonly BlockingCollection<(IMessage message, object? data)> messages =
-            new BlockingCollection<(IMessage message, object? data)>();
+        private readonly List<ITopic> topics = new List<ITopic>();
 
         private readonly CancellationTokenSource messageProcessingCancellation =
             new CancellationTokenSource();
 
-        public SolaceServer(IContext context, IOptions<SolaceServerOptions> options, ILogger<SolaceServer> logger)
+        private IDisposable? loggingScope;
+        private AsyncSubject<Unit>? messageProcessingSubject;
+
+        public SolaceServer(IObservableSession session, IOptions<SolaceServerOptions> options, ILogger<SolaceServer> logger)
         {
-            this.context = context;
+            this.session = session;
+            this.options = options;
             this.logger = logger;
-            this.options = options.Value;
+
+            Features.Set<IHttpRequestFeature>(new HttpRequestFeature());
+            Features.Set<IHttpResponseFeature>(new HttpResponseFeature());
+            Features.Set<ISolaceFeature>(
+                new SolaceFeature("", ContextFactory.Instance.CreateTopic(""), null));
+        }
+
+        public IFeatureCollection Features { get; } = new FeatureCollection();
+
+        public async Task StartAsync<TContext>(IHttpApplication<TContext> application, CancellationToken cancellationToken)
+        {
+            logger.LogDebug("The server is starting...");
+
+            if (session.Session == null)
+                throw new InvalidOperationException("The session has not been started.");
+
+            loggingScope?.Dispose();
+            loggingScope = logger.BeginScope(new
+            {
+                host = session.Session.Properties.Host,
+                vpn = session.Session.Properties.VPNName
+            });
+
+            logger.LogDebug("Creating topics...");
 
             var addressFeature = new ServerAddressesFeature();
 
             foreach (var topic in options.Value.Topics)
-                addressFeature.Addresses.Add(
-                    this.options.SessionProperties.Host + ':' +
-                    this.options.SessionProperties.VPNName + ':'
-                    + topic);
+            {
+                topics.Add(ContextFactory.Instance.CreateTopic(topic));
+                addressFeature.Addresses.Add(topic);
+            }
 
-            Features.Set<IHttpRequestFeature>(new HttpRequestFeature());
-            Features.Set<IHttpResponseFeature>(new HttpResponseFeature());
             Features.Set<IServerAddressesFeature>(addressFeature);
-            Features.Set<ISolaceFeature>(
-                new SolaceFeature("", ContextFactory.Instance.CreateTopic(""), null));
-
-            topics = this.options.Topics
-                .Select(ContextFactory.Instance.CreateTopic)
-                .ToList()
-                .AsReadOnly();
-        }
-
-        public SolaceSystems.Solclient.Messaging.ISession? Session { get; private set; }
-
-        public int QueuedMessagesCount => messages.Count;
-
-        public IFeatureCollection Features { get; } = new FeatureCollection();
-
-        public event EventHandler? Connected;
-
-        public event EventHandler? Disconnected;
-
-        private void OnSessionEvent(SessionEventArgs args)
-        {
-            switch (args.Event)
-            {
-                case SessionEvent.UpNotice:
-                case SessionEvent.Reconnected:
-                    Connected?.Invoke(this, EventArgs.Empty);
-                    break;
-
-                case SessionEvent.Reconnecting:
-                case SessionEvent.DownError:
-                case SessionEvent.ConnectFailedError:
-                    Disconnected?.Invoke(this, EventArgs.Empty);
-                    break;
-            }
-
-            using (logger.BeginScope(new
-            {
-                @event = args.Event,
-                code = args.ResponseCode
-            }))
-                logger.Log(ToLogLevel(args.Event), args.Info);
-        }
-
-        private static LogLevel ToLogLevel(SessionEvent sessionEvent)
-        {
-            switch (sessionEvent)
-            {
-                case SessionEvent.ProvisionOk:
-                case SessionEvent.SubscriptionOk:
-                    return LogLevel.Debug;
-
-                case SessionEvent.UpNotice:
-                case SessionEvent.Reconnecting:
-                case SessionEvent.Reconnected:
-                case SessionEvent.RepublishUnackedMessages:
-                    return LogLevel.Information;
-
-                case SessionEvent.DownError:
-                case SessionEvent.ConnectFailedError:
-                case SessionEvent.VirtualRouterNameChanged:
-                    return LogLevel.Warning;
-
-                default:
-                    return LogLevel.Error;
-            }
-        }
-
-        private Task? messageProcessingTask;
-
-        public async Task StartAsync<TContext>(IHttpApplication<TContext> application, CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            using var _ = logger.BeginScope(new
-            {
-                host = options.SessionProperties.Host,
-                vpn = options.SessionProperties.VPNName
-            });
-
-            logger.LogDebug("The server is starting...");
-            logger.LogDebug("Creating Solace session...");
-
-            Session = context.CreateSession(options.SessionProperties,
-                (sender, e) =>
-                {
-                    if (ShouldProcessMessage(e.Message))
-                        messages.Add((e.Message, GetData(e.Message)));
-                },
-                (sender, e) => OnSessionEvent(e));
-
-            logger.LogDebug("Connecting session...");
-
-            var connectReturnCode = await Task.Run(Session.Connect);
-
-            if (connectReturnCode != ReturnCode.SOLCLIENT_OK)
-                using (logger.BeginScope(new
-                {
-                    userName = options.SessionProperties.UserName,
-                    code = connectReturnCode
-                }))
-                    logger.LogError("Error connecting Solace.");
-
-            logger.LogDebug("Subscribing...");
 
             foreach (var topic in topics)
             {
-                var subscribeReturnCode = await Task.Run(() => Session.Subscribe(topic, true));
+                using var scope = logger.BeginScope(new { topic = topic.Name });
 
-                if (subscribeReturnCode != ReturnCode.SOLCLIENT_OK)
-                    using (logger.BeginScope(new
-                    {
-                        topic,
-                        code = subscribeReturnCode
-                    }))
+                logger.LogDebug("Subscribing...");
+
+                var subscribed = session.SessionEvents.FirstAsync(e =>
+                    e.Event == SessionEvent.SubscriptionOk ||
+                    e.Event == SessionEvent.SubscriptionError)
+                .RunAsync(cancellationToken);
+                var subscribeReturnCode = session.Session.Subscribe(topic, false);
+
+                if (subscribeReturnCode == ReturnCode.SOLCLIENT_IN_PROGRESS)
+                {
+                    var subscribedEvent = await subscribed;
+
+                    if (subscribedEvent.Event == SessionEvent.SubscriptionError)
+                        using (logger.BeginScope(new { sessionEvent = subscribedEvent.Event }))
+                            logger.LogError("Error subscribing Solace topic: " + subscribedEvent.Info);
+                }
+                else
+                    using (logger.BeginScope(new { code = subscribeReturnCode }))
                         logger.LogError("Error subscribing Solace topic.");
             }
 
             logger.LogDebug("Starting message processing loop...");
 
-            messageProcessingTask = ProcessMessages(application, messageProcessingCancellation.Token);
+            messageProcessingSubject = session
+                .Messages
+                .Where(ShouldProcessMessage)
+                .SelectMany(message => ProcessMessages(application, message, GetData(message)))
+                .RunAsync(messageProcessingCancellation.Token);
 
-            logger.LogInformation("The server has been started...");
+            logger.LogInformation("The server has started successfully.");
         }
 
+        public async Task StopAsync(CancellationToken cancellationToken)
+        {
+            if (session.Session == null)
+                throw new InvalidOperationException("The session has not been started.");
+            if (messageProcessingSubject == null)
+                throw new InvalidOperationException("The server has not been started.");
+
+            logger.LogDebug("The server is stopping...");
+
+            messageProcessingCancellation.Cancel();
+
+            logger.LogDebug("Waiting for the message loop to exit...");
+
+            try
+            {
+                await messageProcessingSubject;
+            }
+            catch (OperationCanceledException)
+            { }
+
+            logger.LogInformation("The server has been stopped...");
+        }
+        
         protected virtual object? GetData(IMessage message) => null;
+
         protected virtual bool ShouldProcessMessage(IMessage message) => true;
 
-        private async Task ProcessMessages<TContext>(IHttpApplication<TContext> application, CancellationToken cancellationToken)
+        private async Task<Unit> ProcessMessages<TContext>(IHttpApplication<TContext> application, IMessage message, object? data)
         {
-            await Task.Yield();
+            try
+            {
+                var context = application.CreateContext(new FeatureCollection(Features))!;
 
-            foreach ((var message, var data) in messages.GetConsumingEnumerable(cancellationToken))
                 try
                 {
-                    var context = application.CreateContext(new FeatureCollection(Features))!;
+                    var httpContext = HttpApplicationContextHelper<TContext>.GetHttpContext(context);
+                    using var responseStream = new MemoryStream();
+                    using var traceScope = logger.BeginScope(new { traceIdentifier = httpContext.TraceIdentifier });
 
-                    try
+                    logger.LogDebug("Got a request.");
+                    FillRequest(httpContext.Request, message, data);
+
+                    httpContext.Response.ContentType = httpContext.Request.ContentType;
+                    httpContext.Response.Body = responseStream;
+
+                    logger.LogDebug("Processing the request...");
+                    await application.ProcessRequestAsync(context);
+
+                    if (message.ReplyTo == null)
+                        logger.LogDebug("Skipped sending the response.");
+                    else
                     {
-                        var httpContext = HttpApplicationContextHelper<TContext>.GetHttpContext(context);
-                        using var responseStream = new MemoryStream();
+                        logger.LogDebug("Sending the response...");
+                        using var responseMessage = session.Session!.CreateMessage();
 
-                        FillRequest(httpContext.Request, message, data);
+                        FillResponse(httpContext.Response, responseMessage);
 
-                        httpContext.Response.ContentType = httpContext.Request.ContentType;
-                        httpContext.Response.Body = responseStream;
+                        var sendReplyReturnCode = session.Session.SendReply(message, responseMessage);
 
-                        await application.ProcessRequestAsync(context);
-
-                        if (message.ReplyTo != null)
-                        {
-                            using var responseMessage = Session!.CreateMessage();
-
-                            FillResponse(httpContext.Response, responseMessage);
-
-                            var sendReplyReturnCode = Session.SendReply(message, responseMessage);
-
-                            if (sendReplyReturnCode != ReturnCode.SOLCLIENT_OK)
-                                using (logger.BeginScope(new
-                                {
-                                    host = options.SessionProperties.Host,
-                                    vpn = options.SessionProperties.VPNName,
-                                    code = sendReplyReturnCode
-                                }))
-                                    logger.LogError("Error sending response.");
-                        }
-
-                        application.DisposeContext(context, null);
+                        if (sendReplyReturnCode != ReturnCode.SOLCLIENT_OK)
+                            using (logger.BeginScope(new { code = sendReplyReturnCode }))
+                                logger.LogError("Error sending response.");
                     }
-                    catch (Exception ex)
-                    {
-                        application.DisposeContext(context, ex);
-                        throw;
-                    }
+
+                    application.DisposeContext(context, null);
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError(ex, "Unexpected error processing message.");
+                    application.DisposeContext(context, ex);
+                    throw;
                 }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Unexpected error processing message.");
+            }
+
+            return Unit.Default;
         }
 
         protected virtual void FillRequest(HttpRequest request, IMessage requestMessage, object? data)
@@ -242,54 +202,17 @@ namespace AspNetCoreExtras.Solace.Server
             responseMessage.BinaryAttachment = response.Body.ReadAllBytes();
         }
 
-        public async Task StopAsync(CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            using var _ = logger.BeginScope(new
-            {
-                host = options.SessionProperties.Host,
-                vpn = options.SessionProperties.VPNName
-            });
-
-            logger.LogDebug("The server is stopping...");
-
-            messageProcessingCancellation.Cancel();
-
-            logger.LogDebug("Waiting for the message loop to exit...");
-
-            try
-            {
-                await messageProcessingTask!;
-            }
-            catch (OperationCanceledException)
-            { }
-
-            logger.LogDebug("Disconnecting the session...");
-
-            Session!.Disconnect();
-
-            logger.LogInformation("The server has been stopped...");
-        }
-
         public virtual void Dispose()
         {
-            using var _ = logger.BeginScope(new
-            {
-                host = options.SessionProperties.Host,
-                vpn = options.SessionProperties.VPNName
-            });
-
             logger.LogDebug("Disposing...");
 
             messageProcessingCancellation.Dispose();
-            messages.Dispose();
-            Session?.Dispose();
 
             foreach (var topic in topics)
                 topic.Dispose();
 
             logger.LogDebug("Disposed...");
+            loggingScope?.Dispose();
         }
     }
 }

@@ -11,14 +11,15 @@
     <RepositoryUrl>https://github.com/stop-cran/AspNetCoreExtras.Solace.Server.git</RepositoryUrl>
     <PackageTags>aspnetcore solace</PackageTags>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>1.5.0</Version>
+    <Version>2.0.0</Version>
     <Copyright>stop-cran, 2020</Copyright>
-    <PackageReleaseNotes>Use HttpContext feature rather than headers.</PackageReleaseNotes>
+    <PackageReleaseNotes>Use IObservable for Solace messages and session events.</PackageReleaseNotes>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore" Version="2.2.0" />
     <PackageReference Include="SolaceSystems.Solclient.Messaging" Version="10.8.0" />
+    <PackageReference Include="System.Reactive" Version="4.4.1" />
   </ItemGroup>
 
   <ItemGroup>

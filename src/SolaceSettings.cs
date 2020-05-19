@@ -1,12 +1,11 @@
 ﻿using SolaceSystems.Solclient.Messaging;
-using System;
+using System.Collections.Generic;
 
 namespace AspNetCoreExtras.Solace.Server
 {
     public class SolaceServerOptions
     {
-        public SessionProperties SessionProperties { get; set; } = new SessionProperties();
-        public string[] Topics { get; set; } = Array.Empty<string>();
+        public List<string> Topics { get; set; } = new List<string>();
         public SolLogLevel SolClientLogLevel { get; set; } = SolLogLevel.Warning;
     }
 }
