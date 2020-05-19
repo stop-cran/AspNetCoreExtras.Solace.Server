@@ -16,7 +16,6 @@ namespace AspNetCoreExtras.Solace.Server
         private readonly IContext context;
         private readonly IOptions<SessionProperties> options;
         private readonly ILogger<ObservableSession> logger;
-
         private readonly Subject<IMessage> messages = new Subject<IMessage>();
         private readonly Subject<SessionEventArgs> sessionEvents = new Subject<SessionEventArgs>();
 
@@ -148,15 +147,11 @@ namespace AspNetCoreExtras.Solace.Server
         {
             if (Session != null)
             {
-                using var _ = logger.BeginScope(new
-                {
-                    host = Session.Properties.Host,
-                    vpn = Session.Properties.VPNName
-                });
-
                 logger.LogDebug("Disposing...");
 
                 Session.Dispose();
+                messages.Dispose();
+                sessionEvents.Dispose();
 
                 logger.LogDebug("Disposed...");
             }
