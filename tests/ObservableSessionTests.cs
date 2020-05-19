@@ -21,7 +21,7 @@ namespace AspNetCoreExtras.Solace.Server.Tests
         private EventHandler<MessageEventArgs>? onMessage;
         private EventHandler<SessionEventArgs>? onSessionEvent;
         private CancellationTokenSource cancel = null!;
-        private ObservableSession observableSession;
+        private ObservableSession observableSession = null!;
 
         [SetUp]
         public void Setup()

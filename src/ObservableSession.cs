@@ -30,7 +30,7 @@ namespace AspNetCoreExtras.Solace.Server
         public IObservable<IMessage> Messages => messages;
         public IObservable<SessionEventArgs> SessionEvents => sessionEvents;
 
-        public async Task StartAsync(CancellationToken cancellationToken)
+        public virtual async Task StartAsync(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -77,7 +77,7 @@ namespace AspNetCoreExtras.Solace.Server
             }
         }
 
-        public async Task StopAsync(CancellationToken cancellationToken)
+        public virtual async Task StopAsync(CancellationToken cancellationToken)
         {
             if (Session == null)
                 throw new InvalidOperationException("The session has not been connected.");
