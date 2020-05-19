@@ -20,12 +20,14 @@ public class Startup
     public void ConfigureServices(IServiceCollection services)
     {
         // Read Solace settings from the app config.
-        services.Configure<SolaceServerOptions>(Configuration);
+        services.Configure<SolaceServerOptions>(Configuration.GetSection("Solace"));
+        services.Configure<SessionProperties>(Configuration.GetSection("Solace:SessionProperties"));
         // Process Solace messages, rather than HTTP requests.
         // This call reqisters `SolaceServer` as ASP.Net `IServer` implementation.
         // To process both HTTP and Solace in a single app, one can create
         // kind of composite class as `IServer` implementation (see below).
         services.AddSolaceServer();
+        services.AddHostedService(services => services.GetRequiredService<IObservableSession>());
         // Other settings.
     }
 }
@@ -37,8 +39,6 @@ appconfig.json sample (for other session properties see [documentation](https://
 {
   "Solace": {
     "Topics": [ "someTopic" ],
-    "MaxParallelRequests": 5,
-    "ContentType": "application/json",
     "SessionProperties": {
       "Host": "solace.host",
       "VPNName": "solace-vpn",
