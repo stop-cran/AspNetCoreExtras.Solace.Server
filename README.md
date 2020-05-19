@@ -27,7 +27,7 @@ public class Startup
         // To process both HTTP and Solace in a single app, one can create
         // kind of composite class as `IServer` implementation (see below).
         services.AddSolaceServer();
-        services.AddHostedService(services => services.GetRequiredService<IObservableSession>());
+        services.AddHostedService(services => services.GetRequiredService<IObservableSessionService>());
         // Other settings.
     }
 }
@@ -166,7 +166,7 @@ public void ConfigureServices(IServiceCollection services)
     services.Configure<SolaceServerOptions>(Configuration.GetSection("Solace"));
     services.Configure<SessionProperties>(Configuration.GetSection("Solace:SessionProperties"));
     services.AddSolaceObservableSession();
-    services.AddHostedService(services => services.GetRequiredService<IObservableSession>());
+    services.AddHostedService(services => services.GetRequiredService<IObservableSessionService>());
     services.AddSingleton<SolaceServer>();
     services.AddSingleton<KestrelServer>();
     services.AddSingleton<IServer, SolaceAndKestrelServer>();
