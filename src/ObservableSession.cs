@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SolaceSystems.Solclient.Messaging;
 using System;
+using System.Reactive.Concurrency;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Threading;
@@ -27,8 +28,8 @@ namespace AspNetCoreExtras.Solace.Server
         }
 
         public ISession? Session { get; private set; }
-        public IObservable<IMessage> Messages => messages;
-        public IObservable<SessionEventArgs> SessionEvents => sessionEvents;
+        public IObservable<IMessage> Messages => messages.ObserveOn(TaskPoolScheduler.Default);
+        public IObservable<SessionEventArgs> SessionEvents => sessionEvents.ObserveOn(TaskPoolScheduler.Default);
 
         public virtual async Task StartAsync(CancellationToken cancellationToken)
         {
@@ -54,7 +55,9 @@ namespace AspNetCoreExtras.Solace.Server
 
             logger.LogDebug("Connecting session...");
 
-            var upNotice = sessionEvents.FirstAsync(e => e.Event == SessionEvent.UpNotice).RunAsync(cancellationToken);
+            var upNotice = SessionEvents
+                .FirstAsync(e => e.Event == SessionEvent.UpNotice)
+                .RunAsync(cancellationToken);
             var connectReturnCode = Session.Connect();
 
             if (connectReturnCode == ReturnCode.SOLCLIENT_IN_PROGRESS)
@@ -90,7 +93,7 @@ namespace AspNetCoreExtras.Solace.Server
 
             logger.LogDebug("Disconnecting the session...");
 
-            var disconnected = sessionEvents
+            var disconnected = SessionEvents
                 .FirstAsync(e => e.Event == SessionEvent.DownError)
                 .RunAsync(cancellationToken);
             var code = Session.Disconnect();

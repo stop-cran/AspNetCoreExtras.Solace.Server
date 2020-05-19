@@ -75,23 +75,32 @@ namespace AspNetCoreExtras.Solace.Server
 
                 logger.LogDebug("Subscribing...");
 
-                var subscribed = session.SessionEvents.FirstAsync(e =>
-                    e.Event == SessionEvent.SubscriptionOk ||
-                    e.Event == SessionEvent.SubscriptionError)
-                .RunAsync(cancellationToken);
+                var subscribed = session.SessionEvents
+                    .FirstAsync(e =>
+                        e.Event == SessionEvent.SubscriptionOk ||
+                        e.Event == SessionEvent.SubscriptionError)
+                    .RunAsync(cancellationToken);
                 var subscribeReturnCode = session.Session.Subscribe(topic, false);
 
-                if (subscribeReturnCode == ReturnCode.SOLCLIENT_IN_PROGRESS)
+                if (subscribeReturnCode == ReturnCode.SOLCLIENT_OK)
+                    logger.LogDebug("Subscribed Solace topic.");
+                else if (subscribeReturnCode == ReturnCode.SOLCLIENT_IN_PROGRESS)
                 {
                     var subscribedEvent = await subscribed;
 
-                    if (subscribedEvent.Event == SessionEvent.SubscriptionError)
+                    if (subscribedEvent.Event == SessionEvent.SubscriptionOk)
+                        logger.LogDebug("Subscribed Solace topic.");
+                    else
                         using (logger.BeginScope(new { sessionEvent = subscribedEvent.Event }))
                             logger.LogError("Error subscribing Solace topic: " + subscribedEvent.Info);
+                    subscribed.Dispose();
                 }
                 else
+                {
                     using (logger.BeginScope(new { code = subscribeReturnCode }))
                         logger.LogError("Error subscribing Solace topic.");
+                    subscribed.Dispose();
+                }
             }
 
             logger.LogDebug("Starting message processing loop...");
@@ -127,7 +136,7 @@ namespace AspNetCoreExtras.Solace.Server
 
             logger.LogInformation("The server has been stopped...");
         }
-        
+
         protected virtual object? GetData(IMessage message) => null;
 
         protected virtual bool ShouldProcessMessage(IMessage message) => true;
