@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 
 namespace AspNetCoreExtras.Solace.Server
 {
-    public class ObservableSession : IObservableSession, IHostedService, IDisposable
+    public class ObservableSession : IObservableSessionService
     {
         private readonly IContext context;
         private readonly IOptions<SessionProperties> options;
