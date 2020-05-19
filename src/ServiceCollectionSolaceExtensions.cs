@@ -21,8 +21,7 @@ namespace AspNetCoreExtras.Solace.Server
         public static IServiceCollection AddSolaceObservableSession(this IServiceCollection services) =>
             services.AddSolaceContext()
                 .AddSingleton<IObservableSessionService, ObservableSession>()
-                .AddSingleton(services => services.GetRequiredService<IObservableSessionService>())
-                .AddSingleton(services => services.GetRequiredService<IObservableSession>());
+                .AddSingleton<IObservableSession>(services => services.GetRequiredService<IObservableSessionService>());
 
         /// <summary>
         /// Register singleton SolaceSystems.Solclient.Messaging.IContext,
