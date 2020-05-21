@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SolaceSystems.Solclient.Messaging;
@@ -9,19 +10,22 @@ namespace AspNetCoreExtras.Solace.Server
     public static class ServiceCollectionSolaceExtensions
     {
         /// <summary>
-        /// Register Solace server, IObservableSession and SolaceSystems.Solclient.Messaging.IContext (see AddSolaceObservableSession method).
+        /// Register Solace server.
         /// </summary>
         public static IServiceCollection AddSolaceServer(this IServiceCollection services) =>
-            services.AddSolaceObservableSession()
+            services
+                .AddSolaceContext()
+                .AddSolaceObservableSession()
                 .AddSingleton<IServer, SolaceServer>();
 
         /// <summary>
-        /// Register IObservableSession and SolaceSystems.Solclient.Messaging.IContext (see AddSolaceContext method).
+        /// Register IObservableSession and the corresponding hosted service.
         /// </summary>
         public static IServiceCollection AddSolaceObservableSession(this IServiceCollection services) =>
-            services.AddSolaceContext()
+            services
                 .AddSingleton<IObservableSessionService, ObservableSession>()
-                .AddSingleton<IObservableSession>(services => services.GetRequiredService<IObservableSessionService>());
+                .AddSingleton<IObservableSession>(services => services.GetRequiredService<IObservableSessionService>())
+                .AddSingleton<IHostedService>(services => services.GetRequiredService<IObservableSessionService>());
 
         /// <summary>
         /// Register singleton SolaceSystems.Solclient.Messaging.IContext,
