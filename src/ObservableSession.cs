@@ -3,9 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SolaceSystems.Solclient.Messaging;
 using System;
-using System.Reactive.Concurrency;
 using System.Reactive.Linq;
-using System.Reactive.Subjects;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -16,8 +14,9 @@ namespace AspNetCoreExtras.Solace.Server
         private readonly IContext context;
         private readonly IOptions<SessionProperties> options;
         private readonly ILogger<ObservableSession> logger;
-        private readonly Subject<IMessage> messages = new Subject<IMessage>();
-        private readonly Subject<SessionEventArgs> sessionEvents = new Subject<SessionEventArgs>();
+
+        private event Action<IMessage> messages;
+        private event Action<SessionEventArgs> sessionEvents;
 
         public ObservableSession(IContext context, IOptions<SessionProperties> options, ILogger<ObservableSession> logger)
         {
@@ -27,8 +26,8 @@ namespace AspNetCoreExtras.Solace.Server
         }
 
         public ISession? Session { get; private set; }
-        public IObservable<IMessage> Messages => messages.ObserveOn(TaskPoolScheduler.Default);
-        public IObservable<SessionEventArgs> SessionEvents => sessionEvents.ObserveOn(TaskPoolScheduler.Default);
+        public IObservable<IMessage> Messages => Observable.FromEvent<IMessage>(d => messages += d, d => messages -= d);
+        public IObservable<SessionEventArgs> SessionEvents => Observable.FromEvent<SessionEventArgs>(d => sessionEvents += d, d => sessionEvents -= d);
 
         public virtual async Task StartAsync(CancellationToken cancellationToken)
         {
@@ -45,11 +44,11 @@ namespace AspNetCoreExtras.Solace.Server
             logger.LogDebug("Creating session...");
 
             Session = context.CreateSession(options.Value,
-                (sender, e) => messages.OnNext(e.Message),
+                (sender, e) => messages?.Invoke(e.Message),
                 (sender, e) =>
                 {
                     LogSessionEvent(e);
-                    sessionEvents.OnNext(e);
+                    sessionEvents?.Invoke(e);
                 });
 
             logger.LogDebug("Connecting session...");
@@ -150,8 +149,6 @@ namespace AspNetCoreExtras.Solace.Server
                 logger.LogDebug("Disposing...");
 
                 Session.Dispose();
-                messages.Dispose();
-                sessionEvents.Dispose();
 
                 logger.LogDebug("Disposed...");
             }
