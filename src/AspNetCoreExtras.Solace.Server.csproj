@@ -11,7 +11,7 @@
     <RepositoryUrl>https://github.com/stop-cran/AspNetCoreExtras.Solace.Server.git</RepositoryUrl>
     <PackageTags>aspnetcore solace</PackageTags>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>2.1.1</Version>
+    <Version>2.2.1</Version>
     <Copyright>stop-cran, 2020-2021</Copyright>
     <PackageReleaseNotes>Use IObservable for Solace messages and session events.</PackageReleaseNotes>
   </PropertyGroup>

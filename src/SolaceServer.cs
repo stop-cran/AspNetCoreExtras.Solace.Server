@@ -139,7 +139,8 @@ namespace AspNetCoreExtras.Solace.Server
 
         protected virtual object? GetData(IMessage message) => null;
 
-        protected virtual bool ShouldProcessMessage(IMessage message) => true;
+        protected virtual bool ShouldProcessMessage(IMessage message) =>
+            !message.IsReplyMessage;
 
         private async Task<Unit> ProcessMessages<TContext>(IHttpApplication<TContext> application, IMessage message, object? data)
         {
