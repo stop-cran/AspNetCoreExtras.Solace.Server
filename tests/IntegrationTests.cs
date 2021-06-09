@@ -19,19 +19,21 @@ namespace AspNetCoreExtras.Solace.Server.Tests
     {
         private IHost host;
 
+        private SessionProperties GetSessionProperties() => new SessionProperties
+        {
+            Host = "localhost",
+            VPNName = "default",
+            UserName = "default",
+            Password = "default"
+        };
+
         [SetUp]
         public void Setup()
         {
             var sessionPropertiesOptions = new Mock<IOptions<SessionProperties>>();
 
             sessionPropertiesOptions.Setup(op => op.Value)
-                .Returns(new SessionProperties
-                {
-                    Host = "localhost",
-                    VPNName = "default",
-                    UserName = "default",
-                    Password = "default"
-                });
+                .Returns(GetSessionProperties());
             var solaceServerOptions = new Mock<IOptions<SolaceServerOptions>>();
 
             solaceServerOptions.Setup(op => op.Value)
@@ -66,15 +68,10 @@ namespace AspNetCoreExtras.Solace.Server.Tests
         public async Task ShouldProcessRequest()
         {
             await host.StartAsync();
+            await Task.Delay(5000);
 
             using var context = ContextFactory.Instance.CreateContext(new ContextProperties(), null);
-            using var session = context.CreateSession(new SessionProperties
-            {
-                Host = "localhost",
-                VPNName = "default",
-                UserName = "default",
-                Password = "default"
-            }, null, null);
+            using var session = context.CreateSession(GetSessionProperties(), null, null);
 
             session.Connect().ShouldBe(ReturnCode.SOLCLIENT_OK);
 
@@ -85,15 +82,16 @@ namespace AspNetCoreExtras.Solace.Server.Tests
             message.BinaryAttachment = Encoding.UTF8.GetBytes("test request");
             message.Destination = topic;
 
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; ; i++)
             {
-                var code = session.SendRequest(message, out var response, 1000);
+                var code = session.SendRequest(message, out var response, 2000);
 
-                if (code == ReturnCode.SOLCLIENT_INCOMPLETE)
+                if (i < 10 && code == ReturnCode.SOLCLIENT_INCOMPLETE)
                     continue;
                 code.ShouldBe(ReturnCode.SOLCLIENT_OK);
                 response.ApplicationMessageType.ShouldBe("456");
                 response.Dispose();
+                break;
             }
 
             await host.StopAsync();
