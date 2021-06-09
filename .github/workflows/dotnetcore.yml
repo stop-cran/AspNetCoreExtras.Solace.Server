@@ -27,3 +27,10 @@ jobs:
         PROJECT_FILE_PATH: src/AspNetCoreExtras.Solace.Server.csproj
         TAG_COMMIT: true
         NUGET_KEY: ${{ secrets.NuGetAPIKey }}
+    services:
+      solace:
+        image: solace/solace-pubsub-standard
+        ports:
+          - 55555:55555
+        options:
+          --shm-size=1024m
