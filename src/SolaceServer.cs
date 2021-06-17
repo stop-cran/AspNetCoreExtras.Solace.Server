@@ -157,6 +157,7 @@ namespace AspNetCoreExtras.Solace.Server
                     logger.LogDebug("Got a request.");
                     FillRequest(httpContext.Request, message, data);
 
+                    httpContext.Response.StatusCode = StatusCodes.Status200OK;
                     httpContext.Response.ContentType = httpContext.Request.ContentType;
                     httpContext.Response.Body = responseStream;
 
